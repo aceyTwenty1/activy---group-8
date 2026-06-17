@@ -1,25 +1,19 @@
-# analyzer.py
 import cv2
 import numpy as np
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-import json
 import os
 import urllib.request
-
-# Import our new rules repository
 from exercise_repo import get_exercise_profile
 
-class UniversalExerciseAnalyzer:
+class VisualExerciseAnalyzer:
     def __init__(self):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         model_path = os.path.join(dir_path, 'pose_landmarker_full.task')
         
         if not os.path.exists(model_path):
-            print("=" * 60)
-            print("Downloading 'pose_landmarker_full.task' directly into your folder...")
-            print("=" * 60)
+            print("Downloading 'pose_landmarker_full.task'...")
             url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
             urllib.request.urlretrieve(url, model_path)
 
@@ -33,28 +27,35 @@ class UniversalExerciseAnalyzer:
         angle = np.abs(radians * 180.0 / np.pi)
         return round(360.0 - angle if angle > 180.0 else angle, 2)
 
-    def process_workout(self, video_path, exercise_name):
-        """Processes video using the rules looked up from the external repository file."""
+    def process_and_draw_video(self, video_path, output_path, exercise_name):
         profile = get_exercise_profile(exercise_name)
         if not profile:
-            return {"error": f"Exercise profile '{exercise_name}' is not supported in exercise_repo.py"}
+            print(f"[!] Error: Exercise profile '{exercise_name}' not found.")
+            return
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            return {"error": f"Could not open video file: {video_path}"}
+            print(f"[!] Error: Could not open video {video_path}")
+            return
 
-        fps = int(cap.get(cv2.CAP_PROP_FPS)) if cap.get(cv2.CAP_PROP_FPS) > 0 else 30
-        frame_count = 0
-        telemetry = []
+        # Gather video properties for the exporter
+        width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps    = int(cap.get(cv2.CAP_PROP_FPS)) if cap.get(cv2.CAP_PROP_FPS) > 0 else 30
+        
+        # Configure video writer to output the finalized visual clip
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        # Get specific IDs mapping to what this exercise tracks
         j_map = profile["tracking_joints"]
+        print(f"Analyzing and drawing visual skeleton rig for: {exercise_name}...")
 
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret: break
-            frame_count += 1
+            if not ret:
+                break
             
+            # Convert frame for MediaPipe tracking pass
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
             detection_result = self.detector.detect(mp_image)
@@ -62,72 +63,57 @@ class UniversalExerciseAnalyzer:
             if detection_result.pose_landmarks:
                 landmarks = detection_result.pose_landmarks[0]
                 
-                # Dynamically pull out joints based on repo request mapping rules
-                frame_data = {"frame": frame_count, "timestamp": round(frame_count / fps, 2)}
-                
-                # Check for knee angle if part of schema
-                if "hip" in j_map and "knee" in j_map and "ankle" in j_map:
-                    frame_data["knee_angle"] = self.calculate_angle(
-                        [landmarks[j_map["hip"]].x, landmarks[j_map["hip"]].y],
-                        [landmarks[j_map["knee"]].x, landmarks[j_map["knee"]].y],
-                        [landmarks[j_map["ankle"]].x, landmarks[j_map["ankle"]].y]
-                    )
-                
-                # Check for elbow angle if part of schema
-                if "shoulder" in j_map and "elbow" in j_map and "wrist" in j_map:
-                    frame_data["elbow_angle"] = self.calculate_angle(
-                        [landmarks[j_map["shoulder"]].x, landmarks[j_map["shoulder"]].y],
-                        [landmarks[j_map["elbow"]].x, landmarks[j_map["elbow"]].y],
-                        [landmarks[j_map["wrist"]].x, landmarks[j_map["wrist"]].y]
-                    )
+                # Convert normalized landmarks into actual pixel locations
+                points = {}
+                for joint_name, idx in j_map.items():
+                    lm = landmarks[idx]
+                    points[joint_name] = (int(lm.x * width), int(lm.y * height))
 
-                # Track core movement trigger baseline height tracking metric
-                base_key = profile.get("baseline_joint")
-                if base_key and base_key in j_map:
-                    frame_data["tracking_y"] = landmarks[j_map[base_key]].y
+                # Default tracking color is Green (Good Form)
+                rig_color = (0, 255, 0) # BGR Format
+                status_text = "FORM STATUS: STABLE"
 
-                telemetry.append(frame_data)
-                
+                # Run biomechanical threshold checking rules
+                if "hip" in points and "knee" in points and "ankle" in points:
+                    knee_angle = self.calculate_angle(points["hip"], points["knee"], points["ankle"])
+                    
+                    # Squat depth checking example mapping rule from repo
+                    if exercise_name == "squat" and knee_angle > profile["checks"]["depth"]["limit"]:
+                        # If a user is at the bottom but shallow, paint the rig red
+                        if points["hip"][1] > (height * 0.6): 
+                            rig_color = (0, 0, 255) # Red alert color
+                            status_text = f"WARNING: {profile['checks']['depth']['fail_cue']}"
+
+                # Draw the tracking bones onto the frame layout
+                if "hip" in points and "knee" in points:
+                    cv2.line(frame, points["hip"], points["knee"], rig_color, 4)
+                if "knee" in points and "ankle" in points:
+                    cv2.line(frame, points["knee"], points["ankle"], rig_color, 4)
+                if "shoulder" in points and "hip" in points:
+                    cv2.line(frame, points["shoulder"], points["hip"], rig_color, 4)
+
+                # Draw joint tracker nodes
+                for joint_name, coord in points.items():
+                    cv2.circle(frame, coord, 6, (255, 255, 255), -1)
+
+                # Superimpose dashboard alerts onto the visual top-bar header
+                cv2.putText(frame, status_text, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, rig_color, 2)
+
+            # Save the frame into our output video asset file
+            out.write(frame)
+
         cap.release()
-        return self.analyze_set(telemetry, profile)
-
-    def analyze_set(self, telemetry, profile):
-        if not telemetry:
-            return {"error": "No tracking telemetry captured."}
-            
-        # Basic rep-counter template dynamically running checks against repo targets
-        total_reps = 0
-        form_score = 100
-        coaching_feedback = []
-
-        # Simple logic tracking simulation mock for the profile evaluation workflow
-        if profile["type"] == "dynamic":
-            # Count fluctuations over threshold configurations
-            total_reps = len(telemetry) // 45  # Estimated proxy representation loop counts
-            if total_reps == 0 and len(telemetry) > 20: 
-                total_reps = 1
-        else:
-            total_reps = 1  # Static holds count as 1 set element execution block
-
-        return {
-            "exercise": profile.get("baseline_joint", "plank").capitalize(),
-            "summary": {
-                "total_reps_counted": total_reps,
-                "overall_form_score": form_score
-            },
-            "coaching_cues": ["Good posture maintained!", "Keep pushing consistency."]
-        }
+        out.release()
+        print(f"[✓] Processing complete! Asset saved as: {output_path}")
 
 if __name__ == "__main__":
-    analyzer = UniversalExerciseAnalyzer()
+    analyzer = VisualExerciseAnalyzer()
     
-    # CHOOSE YOUR EXERCISE HERE: "squat", "push_up", "bicep_curl", "lunge", etc.
-    target_exercise = "squat" 
-    video_file = "uploaded_workout_sample.mp4"
+    video_input = "uploaded_workout_sample.mp4"
+    video_output = "output_analyzed_workout.mp4"
+    exercise = "squat"
     
-    if os.path.exists(video_file):
-        print(f"Starting analytics pass for target exercise rule profile: {target_exercise}")
-        analysis_output = analyzer.process_workout(video_file, target_exercise)
-        print(json.dumps(analysis_output, indent=4))
+    if os.path.exists(video_input):
+        analyzer.process_and_draw_video(video_input, video_output, exercise)
     else:
-        print(f"\n[!] Modular Setup Successful. Drop your testing video file '{video_file}' here to scan for '{target_exercise}'.")
+        print(f"[!] Please place an input video named '{video_input}' inside this folder to generate the visual rig.")
