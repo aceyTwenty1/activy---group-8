@@ -29,4 +29,4 @@ Write-Host "`n==================================================" -ForegroundCol
 Write-Host "SETUP SUCCESSFUL! Environment is fully configured." -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host "To execute your tracking application engine now, type:" -ForegroundColor White
-Write-Host "python analyzer.py" -ForegroundColor Cyan
+Write-Host "python analyzer.py" -ForegroundColor Cyan       
