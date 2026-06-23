@@ -1,0 +1,13 @@
+aiodns-4.0.4.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+aiodns-4.0.4.dist-info/METADATA,sha256=pVHVT-6YGLsPkHek3T52dJw-JihA1xholEOvymEPDLw,9022
+aiodns-4.0.4.dist-info/RECORD,,
+aiodns-4.0.4.dist-info/WHEEL,sha256=aeYiig01lYGDzBgS8HxWXOg3uV61G9ijOsup-k9o1sk,91
+aiodns-4.0.4.dist-info/licenses/LICENSE,sha256=PpHPp2ghq3DSKZgTbWdNIK6IhGOn6KfzdxZs_h7mT-s,1069
+aiodns-4.0.4.dist-info/top_level.txt,sha256=5J2m3NWP4dezFZNpQoHaj8mv472iPcUzFboQoqWcEe4,7
+aiodns/__init__.py,sha256=C8XPexYSfsN-sHf9hTmRMbGwgD189znOD-sduqQfkKQ,19381
+aiodns/__pycache__/__init__.cpython-312.pyc,,
+aiodns/__pycache__/compat.cpython-312.pyc,,
+aiodns/__pycache__/error.cpython-312.pyc,,
+aiodns/compat.py,sha256=lHsaYQ8ANvBpb6iqniMJoxuMXY_Cp-NmGRePvH4D91c,7941
+aiodns/error.py,sha256=wYZFONch2rThb6sdMuKh_NUZBLJ5UgezHPwireqhQZE,1225
+aiodns/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
